@@ -3,9 +3,10 @@ import importlib
 import pytest
 
 from harness.errors import ERROR_PATH_DENIED, ERROR_TOOL_CRASH
-from harness.skills.builtins.file_reader import _is_in_blocked_dirs, file_reader
+from harness.skills.builtins.file_reader import file_reader
+from harness.skills.builtins.path_policy import is_in_blocked_dirs
 
-file_reader_module = importlib.import_module("harness.skills.builtins.file_reader")
+path_policy_module = importlib.import_module("harness.skills.builtins.path_policy")
 
 
 @pytest.mark.asyncio()
@@ -16,6 +17,16 @@ async def test_file_reader_reads_allowed_file(tmp_path) -> None:
     result = await file_reader.execute(path="a.txt", cwd=str(tmp_path))
     assert result.error_code is None
     assert result.output == "hello"
+
+
+@pytest.mark.asyncio()
+async def test_file_reader_denies_directory_path(tmp_path) -> None:
+    target_dir = tmp_path / "project"
+    target_dir.mkdir()
+
+    result = await file_reader.execute(path="project", cwd=str(tmp_path))
+    assert result.error_code == ERROR_PATH_DENIED
+    assert result.metadata["reason"] == "path_is_directory"
 
 
 @pytest.mark.asyncio()
@@ -30,7 +41,7 @@ async def test_file_reader_denies_outside_allowlist(tmp_path) -> None:
 
 @pytest.mark.asyncio()
 async def test_file_reader_denies_large_file(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(file_reader_module, "MAX_FILE_BYTES", 1)
+    monkeypatch.setattr(path_policy_module, "MAX_FILE_BYTES", 1)
     target = tmp_path / "big.txt"
     target.write_text("hello", encoding="utf-8")
 
@@ -53,7 +64,7 @@ async def test_file_reader_denies_blocked_home_ssh(monkeypatch, tmp_path) -> Non
     target = ssh_dir / "id_rsa"
     target.write_text("secret", encoding="utf-8")
 
-    monkeypatch.setattr(file_reader_module.Path, "home", staticmethod(lambda: fake_home))
+    monkeypatch.setattr(path_policy_module.Path, "home", staticmethod(lambda: fake_home))
     result = await file_reader.execute(path=str(target), cwd=str(fake_home))
     assert result.error_code == ERROR_PATH_DENIED
     assert result.metadata["reason"] == "path_in_blocked_directory"
@@ -62,5 +73,5 @@ async def test_file_reader_denies_blocked_home_ssh(monkeypatch, tmp_path) -> Non
 @pytest.mark.asyncio()
 async def test_file_reader_windows_blocked_dir_uses_system_drive(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("SystemDrive", "E:")
-    blocked = file_reader_module.Path("E:/Windows/secret.txt")
-    assert _is_in_blocked_dirs(blocked) is True
+    blocked = path_policy_module.Path("E:/Windows/secret.txt")
+    assert is_in_blocked_dirs(blocked) is True

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "answer-keyword",
+    "query": "Reply with exactly one word: eval-pass. No punctuation or extra text.",
+    "expected_contains": "eval-pass"
+  },
+  {
+    "id": "answer-nonempty",
+    "query": "Say hello in one short English sentence.",
+    "expected_contains": ""
+  },
+  {
+    "id": "answer-greeting",
+    "query": "What is 2+2? Reply with only the numeric result.",
+    "expected_contains": "4"
+  },
+  {
+    "id": "tool-readme",
+    "query": "Use file_reader to read README.md, then answer with the first heading line only.",
+    "expected_tools": ["file_reader"],
+    "expected_contains": ""
+  },
+  {
+    "id": "tool-readme-summary",
+    "query": "Read README.md with file_reader and reply with the project name from the first line.",
+    "expected_tools": ["file_reader"],
+    "expected_contains": "Agent Harness"
+  },
+  {
+    "id": "tool-knowledge-smoke",
+    "query": "Use knowledge_search for query harness architecture with top_k 1, then summarize in one sentence.",
+    "expected_tools": ["knowledge_search"],
+    "expected_contains": ""
+  }
+]

@@ -12,6 +12,8 @@ ERROR_TARGET_UNREACHABLE = "target_unreachable"
 ERROR_MAX_STEPS = "max_steps"
 ERROR_LLM_ERROR = "llm_error"
 ERROR_UNKNOWN_TOOL = "unknown_tool"
+ERROR_CHAIN_ROUTE_MISS = "chain_route_miss"
+ERROR_SEARCH_MISCONFIGURED = "search_misconfigured"
 
 ERROR_CODE_MAP = MappingProxyType(
     {
@@ -23,5 +25,7 @@ ERROR_CODE_MAP = MappingProxyType(
         ERROR_MAX_STEPS: "Agent reached maximum step limit.",
         ERROR_LLM_ERROR: "LLM request failed.",
         ERROR_UNKNOWN_TOOL: "Tool requested by model is not registered.",
+        ERROR_CHAIN_ROUTE_MISS: "Router chain has no matching branch.",
+        ERROR_SEARCH_MISCONFIGURED: "Search provider requires configuration.",
     }
 )

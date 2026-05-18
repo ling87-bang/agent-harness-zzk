@@ -9,6 +9,7 @@ import httpx
 
 from harness.config import Settings
 from harness.errors import ERROR_LLM_ERROR
+from harness.llm.base import messages_to_chat_api_payload
 from harness.state import Message, StreamEvent
 
 
@@ -32,10 +33,6 @@ class DeepSeekProvider:
             "Content-Type": "application/json",
         }
 
-    @staticmethod
-    def _serialize_messages(messages: list[Message]) -> list[dict[str, str]]:
-        return [{"role": item.role, "content": item.content} for item in messages]
-
     async def chat(
         self,
         messages: list[Message],
@@ -47,7 +44,7 @@ class DeepSeekProvider:
 
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": self._serialize_messages(messages),
+            "messages": messages_to_chat_api_payload(messages),
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": False,
@@ -89,7 +86,7 @@ class DeepSeekProvider:
 
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": self._serialize_messages(messages),
+            "messages": messages_to_chat_api_payload(messages),
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": True,

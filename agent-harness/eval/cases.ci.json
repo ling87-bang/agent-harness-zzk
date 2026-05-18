@@ -1,0 +1,33 @@
+[
+  {
+    "id": "ci-file-reader",
+    "query": "__ci_file_reader__",
+    "expected_tools": ["file_reader"],
+    "expected_contains": "file content"
+  },
+  {
+    "id": "ci-knowledge-search",
+    "query": "__ci_knowledge_search__",
+    "expected_tools": ["knowledge_search"],
+    "expected_contains": "knowledge"
+  },
+  {
+    "id": "ci-parse-failed",
+    "query": "__ci_parse_failed__",
+    "expected_error_code": "parse_failed",
+    "expected_contains": "fallback"
+  },
+  {
+    "id": "ci-path-denied",
+    "query": "__ci_path_denied__",
+    "expected_tools": ["file_reader"],
+    "expected_error_code": "path_denied",
+    "expected_contains": "denied"
+  },
+  {
+    "id": "ci-unknown-tool",
+    "query": "__ci_unknown_tool__",
+    "expected_error_code": "unknown_tool",
+    "expected_contains": "unknown"
+  }
+]

@@ -1,4 +1,9 @@
-from harness.engine.loop import _decode_json_string_partial, _extract_json_string_value
+from harness.engine.loop import (
+    MAX_TOOL_OUTPUT_CHARS,
+    _decode_json_string_partial,
+    _extract_json_string_value,
+    _truncate_tool_output,
+)
 
 
 def test_decode_json_string_partial_handles_escapes_and_unicode() -> None:
@@ -14,6 +19,15 @@ def test_decode_json_string_partial_invalid_unicode_is_tolerated() -> None:
     raw = '"x\\uZZZZy"'
     decoded = _decode_json_string_partial(raw, 0)
     assert decoded == "xy"
+
+
+def test_truncate_tool_output() -> None:
+    short = "hello"
+    assert _truncate_tool_output(short) == short
+    long = "x" * (MAX_TOOL_OUTPUT_CHARS + 100)
+    truncated = _truncate_tool_output(long)
+    assert len(truncated) <= MAX_TOOL_OUTPUT_CHARS
+    assert truncated.endswith("...[truncated]...")
 
 
 def test_extract_json_string_value_missing_or_non_string() -> None:

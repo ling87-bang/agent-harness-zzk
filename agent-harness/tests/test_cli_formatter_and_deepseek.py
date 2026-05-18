@@ -5,10 +5,9 @@ from typing import Any
 
 import httpx
 import pytest
-import typer
 from typer.testing import CliRunner
 
-from harness.cli.app import _parse_conversation_id, app, default
+from harness.cli.app import app
 from harness.cli.formatter import render_stream_event
 from harness.config import Settings
 from harness.llm.deepseek import DeepSeekProvider
@@ -26,47 +25,90 @@ def test_formatter_renders_done_and_error(capsys) -> None:
     assert "[error:llm_error] oops" in output
 
 
-def test_cli_default_callback(monkeypatch) -> None:
-    runner = CliRunner()
-    monkeypatch.setattr("harness.cli.app.run_query", lambda query: 0)
-    result = runner.invoke(app, ["hello"])
-    assert result.exit_code == 0
-
-
-def test_cli_requires_query() -> None:
+def test_cli_requires_command() -> None:
     runner = CliRunner()
     result = runner.invoke(app, [])
     assert result.exit_code == 1
-    assert "Provide a query" in result.stdout
+    assert "Usage: zzk run" in result.stdout
 
 
-def test_default_dispatches_run_alias(monkeypatch) -> None:
-    monkeypatch.setattr("harness.cli.app.run_query", lambda query: 0)
-
-    class _Ctx:
-        invoked_subcommand = None
-        args = ["hello"]
-
-    with pytest.raises(typer.Exit) as exc:
-        default(_Ctx(), query="run")
-    assert exc.value.exit_code == 0
+def test_cli_run_alias(monkeypatch) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr("harness.cli.app.run_query", lambda query, **kwargs: 0)
+    result = runner.invoke(app, ["run", "hello"])
+    assert result.exit_code == 0
 
 
-def test_default_dispatches_chat_alias(monkeypatch) -> None:
-    monkeypatch.setattr("harness.cli.app.run_chat", lambda conversation_id=None: 0)
-
-    class _Ctx:
-        invoked_subcommand = None
-        args = ["--conversation-id", "conv-123"]
-
-    with pytest.raises(typer.Exit) as exc:
-        default(_Ctx(), query="chat")
-    assert exc.value.exit_code == 0
+def test_cli_run_requires_query() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["run"])
+    assert result.exit_code == 2
 
 
-def test_parse_conversation_id_option() -> None:
-    assert _parse_conversation_id(["--conversation-id", "conv-123"]) == "conv-123"
-    assert _parse_conversation_id([]) is None
+def test_cli_chat_alias(monkeypatch) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr("harness.cli.app.run_chat", lambda conversation_id=None, **kwargs: 0)
+    result = runner.invoke(app, ["chat", "--conversation-id", "conv-123"])
+    assert result.exit_code == 0
+
+
+def test_cli_eval_alias(monkeypatch, tmp_path) -> None:
+    runner = CliRunner()
+    cases_file = tmp_path / "cases.json"
+    cases_file.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(
+        "harness.cli.app.run_eval",
+        lambda cases_file, output_path=None, **kwargs: 0,
+    )
+
+    result = runner.invoke(app, ["eval", "--cases", str(cases_file)])
+    assert result.exit_code == 0
+
+
+def test_cli_eval_report_out_option(monkeypatch, tmp_path) -> None:
+    runner = CliRunner()
+    cases_file = tmp_path / "cases.json"
+    cases_file.write_text("[]", encoding="utf-8")
+    report_file = tmp_path / "report.json"
+    captured: dict[str, object] = {}
+
+    def _fake_eval(cases_file, output_path=None, **kwargs):
+        captured["output_path"] = output_path
+        return 0
+
+    monkeypatch.setattr("harness.cli.app.run_eval", _fake_eval)
+    result = runner.invoke(
+        app,
+        ["eval", "--cases-file", str(cases_file), "--report-out", str(report_file)],
+    )
+    assert result.exit_code == 0
+    assert captured["output_path"] == report_file
+
+
+def test_cli_eval_legacy_out_alias(monkeypatch, tmp_path) -> None:
+    runner = CliRunner()
+    cases_file = tmp_path / "cases.json"
+    cases_file.write_text("[]", encoding="utf-8")
+    report_file = tmp_path / "report.json"
+    captured: dict[str, object] = {}
+
+    def _fake_eval(cases_file, output_path=None, **kwargs):
+        captured["output_path"] = output_path
+        return 0
+
+    monkeypatch.setattr("harness.cli.app.run_eval", _fake_eval)
+    result = runner.invoke(
+        app,
+        ["eval", "--cases", str(cases_file), "--out", str(report_file)],
+    )
+    assert result.exit_code == 0
+    assert captured["output_path"] == report_file
+
+
+def test_cli_eval_requires_cases_option() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["eval"])
+    assert result.exit_code == 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +194,44 @@ async def test_deepseek_chat_raises_on_malformed_payload(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="llm_error"):
         await provider.chat([Message(role="user", content="hello")])
+
+
+@pytest.mark.asyncio()
+async def test_deepseek_chat_stream_normalizes_tool_messages(monkeypatch) -> None:
+    captured_payloads: list[dict[str, Any]] = []
+
+    class CapturingClient:
+        def __init__(self, timeout: float) -> None:
+            pass
+
+        async def __aenter__(self) -> "CapturingClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def stream(self, method: str, url: str, headers: dict[str, str], json: dict[str, Any]) -> FakeResponse:
+            captured_payloads.append(json)
+            return FakeResponse(payload={"lines": ["data: [DONE]"]})
+
+    monkeypatch.setattr("harness.llm.deepseek.httpx.AsyncClient", CapturingClient)
+    provider = DeepSeekProvider(settings=_make_settings())
+    messages = [
+        Message(role="system", content="s"),
+        Message(role="user", content="u"),
+        Message(role="assistant", content='{"action":"tool","name":"file_reader"}'),
+        Message(role="tool", content='{"output":"denied"}'),
+    ]
+
+    events = []
+    async for item in provider.chat_stream(messages):
+        events.append(item)
+
+    assert captured_payloads
+    api_messages = captured_payloads[0]["messages"]
+    assert all(message["role"] != "tool" for message in api_messages)
+    assert api_messages[-1]["role"] == "user"
+    assert "[tool_observation]" in api_messages[-1]["content"]
 
 
 @pytest.mark.asyncio()

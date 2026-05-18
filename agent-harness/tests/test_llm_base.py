@@ -1,4 +1,18 @@
-from harness.llm.base import parse_llm_response
+from harness.llm.base import messages_to_chat_api_payload, parse_llm_response
+from harness.state import Message
+
+
+def test_messages_to_chat_api_payload_maps_tool_role_to_user() -> None:
+    payload = messages_to_chat_api_payload(
+        [
+            Message(role="assistant", content='{"action":"tool"}'),
+            Message(role="tool", content='{"output":"ok"}'),
+        ]
+    )
+    assert payload[-1]["role"] == "user"
+    assert payload[-1]["content"].startswith("[tool_observation]")
+    assert '{"output":"ok"}' in payload[-1]["content"]
+    assert all(item["role"] != "tool" for item in payload)
 
 
 def test_parse_llm_response_answer_schema() -> None:

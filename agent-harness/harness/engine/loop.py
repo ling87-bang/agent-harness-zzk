@@ -10,9 +10,12 @@ from typing import AsyncIterator
 from harness.engine.trace import TraceRecorder
 from harness.errors import ERROR_LLM_ERROR, ERROR_MAX_STEPS, ERROR_UNKNOWN_TOOL
 from harness.llm.base import LLMProvider, parse_llm_response
-from harness.llm.prompts import SYSTEM_PROMPT
+from harness.llm.prompts import DEFAULT_PROMPT_VERSION, get_system_prompt
 from harness.skills.registry import SkillRegistry
 from harness.state import Message, StreamEvent, TraceStep
+
+
+MAX_TOOL_OUTPUT_CHARS = 4_000
 
 
 async def run_single_turn(
@@ -23,12 +26,14 @@ async def run_single_turn(
     max_steps: int = 4,
     messages: list[Message] | None = None,
     conversation_id: str = "",
+    system_prompt: str | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Phase 2 loop: LLM -> optional tool -> observe -> answer."""
 
     skill_registry = registry or SkillRegistry.with_builtins()
+    resolved_prompt = system_prompt or get_system_prompt(DEFAULT_PROMPT_VERSION)
     turn_messages = messages or [
-        Message(role="system", content=SYSTEM_PROMPT),
+        Message(role="system", content=resolved_prompt),
         Message(role="user", content=query),
     ]
     trace.start_run(
@@ -131,12 +136,16 @@ async def run_single_turn(
                 )
             )
 
+            tool_output = _truncate_tool_output(skill_result.output)
             tool_payload = {
                 "tool": tool_name or "unknown",
                 "error_code": skill_result.error_code,
                 "metadata": skill_result.metadata,
-                "output": skill_result.output,
+                "output": tool_output,
             }
+            if len(skill_result.output) > len(tool_output):
+                tool_payload["output_truncated"] = True
+                tool_payload["output_original_chars"] = len(skill_result.output)
             assistant_payload = {
                 "action": "tool",
                 "name": tool_name or "unknown",
@@ -202,6 +211,12 @@ async def run_single_turn(
         )
         trace.finish_run(final_status="error")
         yield StreamEvent(event_type="error", content=str(exc), error_code=ERROR_LLM_ERROR)
+
+
+def _truncate_tool_output(output: str, max_chars: int = MAX_TOOL_OUTPUT_CHARS) -> str:
+    if len(output) <= max_chars:
+        return output
+    return output[: max_chars - 32] + "\n...[truncated]..."
 
 
 def _chunk_text(content: str, chunk_size: int = 10) -> list[str]:

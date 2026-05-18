@@ -9,6 +9,32 @@ from typing import Any, AsyncIterator, Protocol
 from harness.errors import ERROR_PARSE_FAILED
 from harness.state import Message, StreamEvent
 
+_TOOL_OBSERVATION_PREFIX = "[tool_observation]"
+
+
+def messages_to_chat_api_payload(messages: list[Message]) -> list[dict[str, str]]:
+    """Map internal roles to roles accepted by OpenAI-compatible chat APIs.
+
+    Many providers (including DeepSeek) reject ``role=tool`` unless native function
+    calling is enabled. Harness encodes tool results as user follow-ups instead.
+    """
+
+    payload: list[dict[str, str]] = []
+    for item in messages:
+        if item.role == "tool":
+            payload.append(
+                {
+                    "role": "user",
+                    "content": f"{_TOOL_OBSERVATION_PREFIX}\n{item.content}",
+                }
+            )
+            continue
+        if item.role not in {"system", "user", "assistant"}:
+            payload.append({"role": "user", "content": item.content})
+            continue
+        payload.append({"role": item.role, "content": item.content})
+    return payload
+
 
 @dataclass(frozen=True, slots=True)
 class ParsedLLMResponse:

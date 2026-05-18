@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
 from typing import Any
 
 from harness.errors import ERROR_PATH_DENIED, ERROR_TOOL_CRASH
 from harness.skills.base import SkillResult
+from harness.skills.builtins.path_policy import (
+    MAX_FILE_BYTES,
+    resolve_workspace_path,
+    validate_read_path,
+)
 
-MAX_FILE_BYTES = 10 * 1024 * 1024
+__all__ = ["MAX_FILE_BYTES", "file_reader"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,13 +35,12 @@ class _FileReaderSkill:
         if not isinstance(path_value, str) or not path_value.strip():
             return SkillResult(output="", error_code=ERROR_TOOL_CRASH)
 
-        base_dir = Path(cwd_value).resolve() if isinstance(cwd_value, str) else Path.cwd().resolve()
-        try:
-            target = (base_dir / path_value).resolve() if not Path(path_value).is_absolute() else Path(path_value).resolve()
-        except OSError:
+        resolved = resolve_workspace_path(path_value, cwd_value)
+        if resolved is None:
             return SkillResult(output="", error_code=ERROR_PATH_DENIED)
+        base_dir, target = resolved
 
-        denied_reason = _validate_path(base_dir=base_dir, target=target)
+        denied_reason = validate_read_path(base_dir=base_dir, target=target)
         if denied_reason is not None:
             return SkillResult(
                 output=f"path denied: {denied_reason}",
@@ -56,51 +59,6 @@ class _FileReaderSkill:
             output=content,
             metadata={"path": str(target), "bytes": target.stat().st_size},
         )
-
-
-def _validate_path(base_dir: Path, target: Path) -> str | None:
-    try:
-        target.relative_to(base_dir)
-    except ValueError:
-        return "path_outside_allowlist"
-
-    if _is_in_blocked_dirs(target):
-        return "path_in_blocked_directory"
-
-    if not target.exists() or not target.is_file():
-        return "path_not_readable_file"
-    try:
-        if target.stat().st_size > MAX_FILE_BYTES:
-            return "file_too_large"
-    except OSError:
-        return "path_not_readable_file"
-    return None
-
-
-def _is_in_blocked_dirs(target: Path) -> bool:
-    home = Path.home().resolve()
-    blocked: list[Path] = [home / ".ssh", home / ".zzk"]
-
-    if target.drive:
-        system_drive = os.environ.get("SystemDrive", target.drive or "C:")
-        blocked.extend(
-            [
-                Path(f"{system_drive}/Windows"),
-                Path(f"{system_drive}/Program Files"),
-                Path(f"{system_drive}/Program Files (x86)"),
-            ]
-        )
-    else:
-        blocked.extend([Path("/etc"), Path("/sys"), Path("/proc"), Path("/dev")])
-
-    for blocked_dir in blocked:
-        blocked_resolved = blocked_dir.resolve()
-        try:
-            target.relative_to(blocked_resolved)
-            return True
-        except ValueError:
-            continue
-    return False
 
 
 file_reader = _FileReaderSkill()

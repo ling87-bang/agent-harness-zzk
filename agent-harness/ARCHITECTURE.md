@@ -58,14 +58,18 @@ FastAPI RAG 后端              Agent 运行时框架
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        CLI 层 (harness/cli/)                     │
-│           zzk "query"          zzk chat          zzk trace      │
+│     zzk run "query"    zzk chat    zzk eval    zzk chain list   │
 │                     typer 入口 · 流式渲染 · 错误展示              │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │ 调用
-┌──────────────────────────▼───────────────────────────────────────┐
-│                       引擎层 (harness/engine/)                   │
-│    ReAct 循环             上下文管理             Trace 记录       │
-│  plan→act→observe→loop   压缩策略·持久化        run/step/error   │
+└──────────┬───────────────────────────────┬───────────────────────┘
+           │ 调用                           │ 调用
+┌──────────▼───────────────────────────────▼───────────────────────┐
+│                   编排层 (双引擎)                                │
+│                                                                │
+│   ReAct 循环 (engine/loop.py)    Chain 编排 (chain/)            │
+│   ──────────────────────────    ─────────────────────           │
+│   自主决策: LLM→工具→观察→循环   确定性流程: 节点→节点→节点        │
+│   上下文管理·Trace记录           顺序链·路由链·可嵌套             │
+│   适合：LLM 自主判断             适合：固定流程复用               │
 └──────┬──────────────────────────────┬────────────────────────────┘
        │ 调用 LLM                      │ 调用 Skill
 ┌──────▼──────────────┐   ┌───────────▼────────────────────────────┐
@@ -73,12 +77,14 @@ FastAPI RAG 后端              Agent 运行时框架
 │  (harness/llm/)     │   │  (harness/skills/)                    │
 │                     │   │                                        │
 │  Provider 协议      │   │  Skill 协议 · 自动发现 · 注册中心       │
-│  DeepSeek 实现      │   │  ├─ builtins/       (内置，默认启用)    │
-│  (可扩展多模型)     │   │  ├─ user/           (用户，需 --enable) │
-│                     │   │  └─ KnowledgeTarget ← 抽象适配器层     │
-│                     │   │       ├─ HTTPAdapter → KnowledgeOps    │
-│                     │   │       ├─ MockAdapter  → 测试/离线      │
-│                     │   │       └─ InProcAdapter → (未来)         │
+│  DeepSeek 实现      │   │  ├─ builtins/     file_reader         │
+│  (可扩展多模型)     │   │  │               knowledge_search     │
+│                     │   │  │               web_search  ← 新增   │
+│                     │   │  ├─ user/         (用户，需 --enable) │
+│                     │   │  └─ Target 适配器层                    │
+│                     │   │       ├─ KnowledgeTarget → Copilot    │
+│                     │   │       ├─ SearchTarget   → Web         │
+│                     │   │       └─ MockTarget     → 测试/离线   │
 └─────────────────────┘   └────────────────────────────────────────┘
 ```
 
@@ -99,6 +105,17 @@ zzk_Program/
 │   ├── harness/
 │   │   ├── __init__.py
 │   │   ├── config.py                     # 集中配置 (pydantic-settings)
+│   │   │
+│   │   ├── chain/                        # ── Chain 编排层 (Phase 5 新增) ──
+│   │   │   ├── __init__.py               # 公开接口：Chain, ChainResult
+│   │   │   ├── base.py                   # 抽象 + 数据模型
+│   │   │   ├── sequential.py             # 顺序链
+│   │   │   ├── router.py                 # 路由链
+│   │   │   └── nodes/                    # 预置节点
+│   │   │       ├── __init__.py
+│   │   │       ├── llm_node.py
+│   │   │       ├── skill_node.py
+│   │   │       └── transform_node.py
 │   │   │
 │   │   ├── cli/                          # ── CLI 层 ──
 │   │   │   ├── __init__.py
@@ -127,7 +144,8 @@ zzk_Program/
 │   │       ├── builtins/                 # 内置技能（默认启用）
 │   │       │   ├── __init__.py
 │   │       │   ├── file_reader.py         # 读本地文件（路径安全策略）
-│   │       │   └── knowledge_search.py    # 知识库检索（通过 Target 层）
+│   │       │   ├── knowledge_search.py    # 知识库检索（通过 Target 层）
+│   │       │   └── web_search.py          # Web 搜索 (Phase 5 新增)
 │   │       └── user/                     # 用户技能目录（需 --enable-user-skills）
 │   │
 │   ├── tests/                            # ── 测试 ──
@@ -141,7 +159,12 @@ zzk_Program/
 │   │   ├── test_skills_registry.py
 │   │   ├── test_file_reader.py
 │   │   ├── test_knowledge_search.py
-│   │   └── test_target.py
+│   │   ├── test_target.py
+│   │   ├── test_chain_base.py            # Chain 抽象契约 (Phase 5)
+│   │   ├── test_chain_sequential.py      # 顺序链 (Phase 5)
+│   │   ├── test_chain_router.py          # 路由链 (Phase 5)
+│   │   ├── test_chain_nodes.py           # 预置节点 (Phase 5)
+│   │   └── test_web_search.py            # Web 搜索技能 (Phase 5)
 │   │
 │   └── examples/
 │       └── skills/
@@ -510,7 +533,176 @@ zzk "你好"           zzk "读这块文件"     多轮对话保持上下文    
 
 ---
 
-## 5. 风险与回滚
+## 5. Phase 5：Chain 编排模块 + Web Search 技能
+
+### 5.1 动机
+
+当前 ReAct 循环是唯一的编排方式：LLM 自主决策每一步调用什么工具。但简历中提到"Chain"能力——需要增加一种**确定性编排**的抽象，让开发者可以定义固定的处理流程（如"查知识库 → 摘要 → 翻译"），与 ReAct 的自主决策互补。
+
+同时增加 `web_search` 技能，补齐"搜索"能力，丰富 Skill 生态。
+
+### 5.2 架构变更
+
+新增 `harness/chain/` 顶层模块，与 `engine/`、`llm/`、`skills/` 同级：
+
+```
+harness/chain/
+├── __init__.py          # 公开接口: Chain, ChainResult, register_chain
+├── base.py              # Chain 抽象 + ChainResult + ChainContext
+├── sequential.py        # 顺序链（按序执行多个节点）
+├── router.py            # 路由链（根据条件选择分支）
+└── nodes/
+    ├── __init__.py
+    ├── llm_node.py      # 调用 LLM
+    ├── skill_node.py    # 调用 Skill
+    ├── transform_node.py# 文本转换
+    └── passthrough_node.py
+```
+
+Chain 模块的分层定位：
+
+```
+CLI → Engine (ReAct)  ←→  Chain (顺序/路由)
+          ↓                      ↓
+         LLM                   Skills
+```
+
+- Engine 和 Chain **同级且可互相调用**：Chain 内部可用 SkillNode 调用技能，也可用 LLMNode 调用 LLM；Engine 的 ReAct 循环也可把 Chain 注册为一个 skill
+- Chain 不依赖 engine/loop.py 的内部细节，只依赖 llm/ 和 skills/ 的公开接口
+
+### 5.3 核心设计
+
+```python
+# chain/base.py
+
+@dataclass(frozen=True, slots=True)
+class ChainResult:
+    output: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    error_code: str | None = None
+    sub_results: tuple[ChainResult, ...] = ()  # 子链结果，支持嵌套
+
+class Chain(Protocol):
+    @property
+    def name(self) -> str: ...
+    async def run(self, input: str, context: ChainContext | None = None) -> ChainResult: ...
+```
+
+**SequentialChain** — 前一个节点的输出作为后一个节点的输入：
+
+```
+用户输入 → [LLMNode → SkillNode(file_reader) → LLMNode] → 最终输出
+```
+
+**RouterChain** — 根据条件选择分支：
+
+```
+输入 → 判断条件 → 分支A / 分支B → 输出
+```
+
+### 5.4 预置节点
+
+| 节点 | 用途 | 依赖 |
+|------|------|------|
+| `LLMNode` | 调用 LLM，复用 llm/ 模块 | `harness/llm/` |
+| `SkillNode` | 调用注册的技能 | `harness/skills/` |
+| `TransformNode` | 文本处理（截断、格式化、拼接） | 纯函数 |
+| `PassThroughNode` | 调试用，原样输出 | 无 |
+
+均复用现有 `state.py` 中的 `Message`、`StreamEvent` 等核心模型。
+
+### 5.5 面试叙事增益
+
+> "我设计了 Chain 抽象层，支持顺序链和路由链两种模式。顺序链把前一个节点的输出传给后一个节点，适合固定流程；路由链根据条件选择不同分支。Chain 和 ReAct 是互补关系——ReAct 适合 LLM 自主决策的场景，Chain 适合确定性流程。两者都可以调用底层的 LLM 和 Skills 层，架构上保持正交。"
+
+对比 LangChain：展示了你理解 Chain 的本质是"可组合的编排单元"，而非简单照搬框架。
+
+### 5.6 Web Search 技能
+
+新增 `harness/skills/builtins/web_search.py`，遵循现有 `Skill` 协议：
+
+```python
+@dataclass(frozen=True, slots=True)
+class _WebSearchSkill:
+    target: SearchTarget  # 可替换后端
+
+    async def execute(self, query: str, top_k: int = 5) -> SkillResult: ...
+```
+
+复用 `skills/target.py` 的适配器模式，三个后端：
+
+| 后端 | 接入 | 场景 |
+|------|------|------|
+| `DuckDuckGoTarget` | httpx 直接请求 | 免费，零配置 |
+| `SerpApiTarget` | httpx + API Key | 生产级稳定 |
+| `MockSearchTarget` | 固定结果 | 测试用 |
+
+配置新增：
+
+```env
+ZZK_SEARCH_PROVIDER=duckduckgo    # duckduckgo | serpapi
+ZZK_SEARCH_API_KEY=
+```
+
+### 5.7 CLI 交互
+
+```bash
+# Chain
+zzk chain list                         # 查看已注册 chain
+zzk chain run sequential --steps llm,skill:file_reader,llm "输入"
+
+# Web Search（通过 run/chat 的 ReAct 循环触发）
+zzk run "搜索今天的 AI 新闻"
+```
+
+`zzk chain` 命令挂在现有 app 下，与 `run`、`chat`、`eval` 同级：
+
+```python
+# cli/app.py
+chain_app = typer.Typer(help="Run and manage chains")
+app.add_typer(chain_app, name="chain")
+```
+
+### 5.8 Prompt 更新
+
+`prompts.py` 的 `Available tools:` 列表追加：
+
+```
+- web_search(args: {"query":"<search_query>", "top_k": 5}) — 搜索互联网并返回摘要结果
+```
+
+### 5.9 实现顺序
+
+| 步骤 | 内容 | 涉及时长估计 | 关键文件 |
+|------|------|-------------|---------|
+| 5.9.1 | `base.py` — Chain 抽象 + ChainResult + ChainContext | 小 | `chain/base.py` |
+| 5.9.2 | 预置节点 — LLMNode, SkillNode, TransformNode | 中 | `chain/nodes/*.py` |
+| 5.9.3 | `SequentialChain` — 顺序链 | 中 | `chain/sequential.py` |
+| 5.9.4 | `RouterChain` — 路由链 | 小 | `chain/router.py` |
+| 5.9.5 | `web_search` 技能 + SearchTarget 适配器 | 中 | `skills/builtins/web_search.py`, `skills/target.py` 扩展 |
+| 5.9.6 | CLI `zzk chain` 子命令 | 小 | `cli/app.py`, `cli/commands.py` |
+| 5.9.7 | prompt + errors + registry 更新 | 小 | `prompts.py`, `errors.py`, `registry.py` |
+| 5.9.8 | 全量测试 + ARCHITECTURE.md 更新 | 中 | `tests/test_chain_*.py`, `tests/test_web_search.py` |
+
+### 5.10 测试规划
+
+```
+tests/
+├── test_chain_base.py           # ChainResult, ChainContext, 契约校验
+├── test_chain_sequential.py     # SequentialChain 编排 + 节点组合
+├── test_chain_router.py         # RouterChain 分支选择
+├── test_chain_nodes.py          # LLMNode, SkillNode, TransformNode 单元
+└── test_web_search.py           # WebSearchSkill + MockSearchTarget
+```
+
+遵循现有测试模式：
+- 使用 `pytest-asyncio`（已有）
+- Mock LLM / Mock Skill 隔离外部依赖
+- 覆盖正常路径 + 错误路径 + 边界条件
+
+---
+
+## 6. 风险与回滚
 
 | 风险 | 概率 | 影响 | 缓解措施 | 回滚策略 |
 |------|------|------|---------|---------|

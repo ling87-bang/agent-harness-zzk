@@ -7,7 +7,14 @@ import httpx
 import pytest
 
 from harness.errors import ERROR_TARGET_UNREACHABLE
-from harness.skills.target import HttpKnowledgeTarget, MockKnowledgeTarget
+from harness.skills.target import (
+    AutoKnowledgeTarget,
+    HttpKnowledgeTarget,
+    MockKnowledgeTarget,
+    SqliteKnowledgeTarget,
+    build_knowledge_target,
+    ensure_knowledge_database,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,3 +74,37 @@ async def test_mock_target_returns_items() -> None:
     result = await target.search("hi", top_k=1)
     assert result.hit_count == 1
     assert result.items[0]["source"] == "a"
+
+
+@pytest.mark.asyncio()
+async def test_sqlite_target_search(tmp_path) -> None:
+    db_path = tmp_path / "knowledge.db"
+    ensure_knowledge_database(db_path)
+    target = SqliteKnowledgeTarget(db_path=db_path)
+    result = await target.search("Chain", top_k=2)
+    assert result.error_code is None
+    assert result.hit_count >= 1
+    assert any("Chain" in str(item.get("snippet", "")) for item in result.items)
+
+
+def test_build_knowledge_target_sqlite(tmp_path) -> None:
+    target = build_knowledge_target(provider="sqlite", sqlite_path=str(tmp_path / "knowledge.db"))
+    assert isinstance(target, SqliteKnowledgeTarget)
+
+
+def test_build_knowledge_target_auto() -> None:
+    target = build_knowledge_target(provider="auto")
+    assert isinstance(target, AutoKnowledgeTarget)
+
+
+@pytest.mark.asyncio()
+async def test_auto_target_falls_back_to_sqlite_on_unreachable(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "knowledge.db"
+    ensure_knowledge_database(db_path)
+    http = HttpKnowledgeTarget(base_url="http://localhost:9/knowledge", timeout_seconds=0.1)
+    auto = AutoKnowledgeTarget(http=http, sqlite=SqliteKnowledgeTarget(db_path=db_path))
+    result = await auto.search("Chain", top_k=2)
+    assert result.error_code is None
+    assert result.hit_count >= 1
+    second = await auto.search("Chain", top_k=2)
+    assert second.hit_count >= 1

@@ -45,6 +45,10 @@ class TraceRecorder:
     def run_id(self) -> str:
         return self._run_id
 
+    @property
+    def path(self) -> Path:
+        return self._path
+
     def start_run(
         self,
         query: str,
