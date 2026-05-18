@@ -1,0 +1,32 @@
+[project]
+name = "agent-harness"
+version = "0.1.0"
+description = "Agent Harness (zzk CLI)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.0",
+    "pydantic-settings>=2.0.0",
+    "typer>=0.16.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+]
+
+[project.scripts]
+zzk = "harness.cli.app:app"
+
+[tool.pytest.ini_options]
+addopts = "-q --cov=harness --cov-report=term-missing"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+harness = ["py.typed"]

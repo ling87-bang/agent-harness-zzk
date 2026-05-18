@@ -1,0 +1,35 @@
+# Agent Harness (zzk) — Cursor 规则
+
+## 核心原则
+
+- 不可变性：永远不修改传入的对象，用 `field(default_factory=...)` 替代可变默认值
+- 协议优先：接口用 `typing.Protocol`，不写 ABC
+- dataclass 全部 `frozen=True, slots=True`
+
+## 编码规范
+
+- Python 3.11+，类型注解全员上岗
+- 异步优先：I/O 操作全部 `async def`
+- 错误处理：所有 `except` 路径必须设 `error_code`，不能静默吞异常
+- JSON schema：工具调用必须是严格 JSON，解析失败走 fallback 链并标记 `parse_failed`
+
+## 项目特定
+
+- `config.py` 用 pydantic-settings，不从 `os.environ` 直接读
+- trace 记录用 `record_type` + `step_type` 区分语义，不共用 `type` 字段
+- skill 执行设 timeout=30s 硬限制
+- file_reader 必须有路径安全检查（allowlist + 敏感目录阻塞）
+- 用户技能的 import 只能在 `--enable-user-skills` 标志下生效
+
+## 测试
+
+- pytest，AAA 模式（Arrange-Act-Assert），无共享 fixtures
+- 覆盖率 > 80%，所有错误路径有对应测试
+- fake 实现协议，不 mock 具体类
+
+## 不要做的事
+
+- 不硬编码 API key
+- 不写 `print()`，用 `logging`
+- 不引入新的外部依赖除非 pyproject.toml 同步更新
+- 不在 skills/builtins/ 之外写 production 技能代码
