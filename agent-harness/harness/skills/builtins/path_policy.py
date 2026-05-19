@@ -25,12 +25,37 @@ def resolve_workspace_path(
     return base_dir, target
 
 
+def _drive_letter(path: Path) -> str | None:
+    """Return drive letter (e.g. ``C:``) for native or ``E:/...``-style paths."""
+
+    if path.drive:
+        return path.drive
+    posix = path.as_posix()
+    if len(posix) >= 2 and posix[1] == ":" and posix[0].isalpha():
+        return f"{posix[0].upper()}:"
+    return None
+
+
+def _path_is_under(candidate: Path, root: Path) -> bool:
+    try:
+        candidate.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        pass
+    candidate_posix = candidate.as_posix().lower()
+    root_posix = root.as_posix().lower().rstrip("/")
+    if not root_posix:
+        return False
+    return candidate_posix == root_posix or candidate_posix.startswith(f"{root_posix}/")
+
+
 def is_in_blocked_dirs(target: Path) -> bool:
     home = Path.home().resolve()
     blocked: list[Path] = [home / ".ssh", home / ".zzk"]
 
-    if target.drive:
-        system_drive = os.environ.get("SystemDrive", target.drive or "C:")
+    drive = _drive_letter(target)
+    if drive:
+        system_drive = os.environ.get("SystemDrive", drive)
         blocked.extend(
             [
                 Path(f"{system_drive}/Windows"),
@@ -42,12 +67,8 @@ def is_in_blocked_dirs(target: Path) -> bool:
         blocked.extend([Path("/etc"), Path("/sys"), Path("/proc"), Path("/dev")])
 
     for blocked_dir in blocked:
-        blocked_resolved = blocked_dir.resolve()
-        try:
-            target.relative_to(blocked_resolved)
+        if _path_is_under(target, blocked_dir):
             return True
-        except ValueError:
-            continue
     return False
 
 
