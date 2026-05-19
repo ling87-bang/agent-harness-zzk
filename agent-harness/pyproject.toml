@@ -28,5 +28,10 @@ testpaths = ["tests"]
 requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["harness*"]
+exclude = ["tests*", "eval*", "examples*"]
+
 [tool.setuptools.package-data]
 harness = ["py.typed"]
