@@ -29,24 +29,37 @@ def _drive_letter(path: Path) -> str | None:
     """Return drive letter (e.g. ``C:``) for native or ``E:/...``-style paths."""
 
     if path.drive:
-        return path.drive
-    posix = path.as_posix()
+        return path.drive.upper()
+    if path.parts:
+        head = path.parts[0]
+        if len(head) >= 2 and head[1] == ":" and head[0].isalpha():
+            return f"{head[0].upper()}:"
+    posix = path.as_posix().replace("\\", "/")
     if len(posix) >= 2 and posix[1] == ":" and posix[0].isalpha():
         return f"{posix[0].upper()}:"
     return None
 
 
+def _posix_prefix_under(candidate: Path, root: Path) -> bool:
+    candidate_posix = candidate.as_posix().replace("\\", "/").lower()
+    root_posix = root.as_posix().replace("\\", "/").lower().rstrip("/")
+    if not root_posix:
+        return False
+    return candidate_posix == root_posix or candidate_posix.startswith(f"{root_posix}/")
+
+
 def _path_is_under(candidate: Path, root: Path) -> bool:
+    cand_drive = _drive_letter(candidate)
+    root_drive = _drive_letter(root)
+    if cand_drive and root_drive and cand_drive == root_drive:
+        if _posix_prefix_under(candidate, root):
+            return True
     try:
         candidate.resolve().relative_to(root.resolve())
         return True
     except ValueError:
         pass
-    candidate_posix = candidate.as_posix().lower()
-    root_posix = root.as_posix().lower().rstrip("/")
-    if not root_posix:
-        return False
-    return candidate_posix == root_posix or candidate_posix.startswith(f"{root_posix}/")
+    return _posix_prefix_under(candidate, root)
 
 
 def is_in_blocked_dirs(target: Path) -> bool:
