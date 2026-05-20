@@ -91,18 +91,11 @@ FastAPI RAG 后端              Agent 运行时框架
 ### 2.2 包结构
 
 ```
-zzk_Program/
-├── archive/
-│   └── rag-optimization-studio/          # 原评测框架设计（归档）
+agent-harness-zzk/                        # 本仓库（Agent Harness）
+├── pyproject.toml                        # [project.scripts] zzk = harness.cli.app:app
+├── README.md
 │
-├── knowledgeops-copilot/                 # 已有 RAG 后端（不动）
-│   └── app/
-│
-├── agent-harness/                        # 新建：Agent Harness
-│   ├── pyproject.toml                    # [project.scripts] zzk = harness.cli.app:app
-│   ├── README.md
-│   │
-│   ├── harness/
+├── harness/
 │   │   ├── __init__.py
 │   │   ├── config.py                     # 集中配置 (pydantic-settings)
 │   │   │
@@ -170,7 +163,7 @@ zzk_Program/
 │       └── skills/
 │           └── weather_skill.py           # 示例：第三方技能
 │
-└── agent-harness-ARCHITECTURE.md          # 本文件
+└── ARCHITECTURE.md                        # 本文件
 ```
 
 ---

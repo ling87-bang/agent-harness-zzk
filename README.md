@@ -95,7 +95,7 @@ flowchart TB
 
 ```bash
 git clone https://github.com/ling87-bang/agent-harness-zzk.git
-cd agent-harness-zzk/agent-harness
+cd agent-harness-zzk
 python -m pip install .
 ```
 
@@ -240,7 +240,6 @@ GitHub Actions runs `pytest` (including mocked eval → `eval/report-ci.json`). 
 ## Project layout
 
 ```
-agent-harness/
 ├── harness/          # runtime package (cli, engine, llm, skills, chain)
 ├── tests/
 ├── eval/             # golden cases (not committed: report.json)

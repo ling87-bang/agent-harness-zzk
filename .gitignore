@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.coverage
+
+# Virtual environment
+.venv/
+
+# Cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Eval reports (generated)
+eval/report.json
+eval/report-ci.json
+
+# Local monorepo siblings (not part of agent-harness-zzk remote)
+knowledgeops-copilot/
+archive/
+.claude/
+简历.md
+面试知识图谱.md
