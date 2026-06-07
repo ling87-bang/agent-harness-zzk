@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     search_api_key: str = ""
     search_timeout_seconds: float = 10.0
     prompt_version: Literal["v1", "v2"] = "v2"
+    memory_compress_mode: Literal["deterministic", "llm"] = "deterministic"
+    memory_summary_max_tokens: int = 512
     enable_user_skills: bool = False
     app_name: str = "zzk"
 

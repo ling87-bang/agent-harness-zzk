@@ -21,7 +21,7 @@ dev = [
 zzk = "harness.cli.app:app"
 
 [tool.pytest.ini_options]
-addopts = "-q --cov=harness --cov-report=term-missing"
+addopts = "-q --cov=harness --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
 
 [build-system]

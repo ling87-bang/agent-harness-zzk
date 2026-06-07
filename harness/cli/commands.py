@@ -164,6 +164,17 @@ def _read_trace_metrics(trace_path: Path) -> tuple[float, tuple[str, ...]]:
     return (total_latency_ms, tuple(tools))
 
 
+def _eval_rate_metrics(summary: EvalSummary) -> dict[str, float]:
+    """Derived eval rates (tool_error excludes parse_failed degradation)."""
+    total = summary.total_cases
+    if total == 0:
+        return {"tool_error_rate": 0.0, "parse_failed_rate": 0.0}
+    return {
+        "tool_error_rate": round(summary.error_cases / total, 4),
+        "parse_failed_rate": round(summary.degraded_cases / total, 4),
+    }
+
+
 def _build_eval_report(
     *,
     cases_file: Path,
@@ -184,6 +195,8 @@ def _build_eval_report(
         for result in results
         if not result.passed
     ]
+    rate_metrics = _eval_rate_metrics(summary)
+    avg_wall_clock_rounded = round(avg_wall_clock_ms, 2)
     return {
         "cases_file": str(cases_file),
         "total": summary.total_cases,
@@ -192,8 +205,11 @@ def _build_eval_report(
         "degraded_cases": summary.degraded_cases,
         "error_cases": summary.error_cases,
         "task_success_rate": round(summary.task_success_rate, 4),
+        "tool_error_rate": rate_metrics["tool_error_rate"],
+        "parse_failed_rate": rate_metrics["parse_failed_rate"],
         "avg_step_latency_ms": round(avg_step_latency_ms, 2),
-        "avg_wall_clock_ms": round(avg_wall_clock_ms, 2),
+        "avg_wall_clock_ms": avg_wall_clock_rounded,
+        "avg_latency_ms": avg_wall_clock_rounded,
         "cases": [
             {
                 "case_id": result.case_id,
@@ -271,11 +287,10 @@ def _summarize_prompt_version(
 ) -> dict[str, float | int]:
     step_counts = [_count_trace_steps(Path(result.trace_path)) for result in results]
     avg_steps = sum(step_counts) / len(step_counts) if step_counts else 0.0
-    parse_failed_rate = (
-        summary.degraded_cases / summary.total_cases if summary.total_cases else 0.0
-    )
+    rate_metrics = _eval_rate_metrics(summary)
     wall_clocks = [result.wall_clock_ms for result in results if result.wall_clock_ms > 0]
     avg_wall_clock_ms = sum(wall_clocks) / len(wall_clocks) if wall_clocks else 0.0
+    avg_wall_clock_rounded = round(avg_wall_clock_ms, 2)
     return {
         "total": summary.total_cases,
         "passed": summary.passed_cases,
@@ -283,9 +298,11 @@ def _summarize_prompt_version(
         "degraded_cases": summary.degraded_cases,
         "error_cases": summary.error_cases,
         "task_success_rate": round(summary.task_success_rate, 4),
-        "parse_failed_rate": round(parse_failed_rate, 4),
+        "tool_error_rate": rate_metrics["tool_error_rate"],
+        "parse_failed_rate": rate_metrics["parse_failed_rate"],
         "avg_steps": round(avg_steps, 2),
-        "avg_wall_clock_ms": round(avg_wall_clock_ms, 2),
+        "avg_wall_clock_ms": avg_wall_clock_rounded,
+        "avg_latency_ms": avg_wall_clock_rounded,
     }
 
 
@@ -595,7 +612,12 @@ async def run_chat_async(
     manager = ConversationManager()
     active_conversation_id = conversation_id or manager.new_conversation_id()
     history = manager.load_history(active_conversation_id)
-    history = manager.compress_history(history)
+    history = await manager.compress_history_async(
+        history,
+        mode=settings.memory_compress_mode,
+        provider=provider if settings.memory_compress_mode == "llm" else None,
+        summary_max_tokens=settings.memory_summary_max_tokens,
+    )
 
     typer.echo(f"[chat] conversation_id={active_conversation_id}")
     has_error = False
@@ -631,7 +653,12 @@ async def run_chat_async(
         updated_history = [*history, Message(role="user", content=user_input)]
         if assistant_text:
             updated_history = [*updated_history, Message(role="assistant", content=assistant_text)]
-        history = manager.compress_history(updated_history)
+        history = await manager.compress_history_async(
+            updated_history,
+            mode=settings.memory_compress_mode,
+            provider=provider if settings.memory_compress_mode == "llm" else None,
+            summary_max_tokens=settings.memory_summary_max_tokens,
+        )
         if not manager.save_history(active_conversation_id, history):
             typer.echo("[warn] failed to persist conversation history.")
 

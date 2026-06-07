@@ -293,6 +293,9 @@ def test_build_eval_report_includes_failures() -> None:
     assert len(report["failures"]) == 1
     assert report["failures"][0]["case_id"] == "bad"
     assert report["task_success_rate"] == 0.5
+    assert report["tool_error_rate"] == 0.0
+    assert report["parse_failed_rate"] == 0.5
+    assert report["avg_latency_ms"] == report["avg_wall_clock_ms"]
 
 
 def test_write_eval_report_persists_json(tmp_path) -> None:
@@ -371,6 +374,19 @@ def test_load_eval_cases_parses_expected_tools(tmp_path) -> None:
     cases, error_code = _load_eval_cases(cases_file)
     assert error_code is None
     assert cases[0].expected_tools == ("file_reader",)
+
+
+def test_eval_rate_metrics_empty_summary() -> None:
+    from harness.cli.commands import EvalSummary, _eval_rate_metrics
+
+    summary = EvalSummary(
+        total_cases=0,
+        passed_cases=0,
+        failed_cases=0,
+        degraded_cases=0,
+        error_cases=0,
+    )
+    assert _eval_rate_metrics(summary) == {"tool_error_rate": 0.0, "parse_failed_rate": 0.0}
 
 
 def test_summarize_eval_empty_results() -> None:

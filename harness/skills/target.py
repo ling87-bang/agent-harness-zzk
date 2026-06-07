@@ -33,7 +33,7 @@ class KnowledgeTarget(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class HttpKnowledgeTarget:
-    """Knowledge target backed by HTTP API."""
+    """Knowledge target backed by HTTP API (POST {base_url}/search, Harness contract)."""
 
     base_url: str
     api_key: str | None = None

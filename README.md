@@ -76,7 +76,7 @@ flowchart TB
 | Area | Capabilities |
 |------|----------------|
 | **ReAct** | Strict JSON `tool` / `answer`, streaming tokens, max-step guard, tool output truncation |
-| **Chat** | Multi-turn history under `~/.zzk/conversations`, compression by message count and chars |
+| **Chat** | Multi-turn history under `~/.zzk/conversations`; compression by message count + char budget (`deterministic` default, optional `llm` summary with rule fallback) |
 | **Skills** | `file_reader`, `file_writer`, `knowledge_search`, `web_search`; optional user skills from `~/.zzk/skills` |
 | **Safety** | Workspace path allowlist + blocked dirs (shared `path_policy` for read/write) |
 | **Chain** | Deterministic `sequential` / `router` pipelines (`llm`, `skill:*`, `transform:*`) |
@@ -126,6 +126,8 @@ ZZK_SEARCH_API_KEY=
 ZZK_SEARCH_TIMEOUT_SECONDS=10.0
 
 ZZK_PROMPT_VERSION=v2
+ZZK_MEMORY_COMPRESS_MODE=deterministic
+ZZK_MEMORY_SUMMARY_MAX_TOKENS=512
 ZZK_ENABLE_USER_SKILLS=false
 ```
 
